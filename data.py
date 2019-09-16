@@ -25,6 +25,10 @@ def load_dataset(name,args):
         val_dataset = PPI(path, split='test',transform=T.NormalizeFeatures())
         test_dataset = PPI(path, split='test',transform=T.NormalizeFeatures())
         args.num_features = train_dataset.num_features
+        max_nodes = calculate_max_nodes_in_dataset(train_dataset + val_dataset + test_dataset,\
+                                                   args.min_nodes)
+        total_graphs = len(train_dataset) + len(val_dataset) + len(test_dataset)
+        print("Total Graphs in PPI %d" %(total_graphs))
     else:
         if name == 'ENZYMES':
             dataset = list(TUDataset(path,name,use_node_attr=True,\
@@ -33,7 +37,6 @@ def load_dataset(name,args):
         elif name =='REDDIT-MULTI-12K':
             dataset = list(TUDataset(path,name))
             shuffle(dataset)
-            # args.use_fixed_feats = True
             max_nodes = calculate_max_nodes_in_dataset(dataset,args.min_nodes)
             dataset = filter_dataset(dataset,args.min_nodes,max_nodes)
             args.feats = torch.randn(max_nodes,args.num_fixed_features,requires_grad=False)
@@ -80,6 +83,7 @@ def load_dataset(name,args):
             args.num_features = args.num_fixed_features
     if args.concat_fixed_feats:
         args.num_features = args.num_features + args.num_concat_features
+    print("Node Features: %d" %(args.num_features))
     train_loader = DataListLoader(train_dataset, batch_size=args.train_batch_size, shuffle=False)
     val_loader = DataListLoader(val_dataset, batch_size=args.test_batch_size, shuffle=False)
     test_loader = DataListLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False)

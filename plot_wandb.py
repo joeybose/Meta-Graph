@@ -54,7 +54,7 @@ SetPlotRC()
 def data_to_extract(username,args):
     labels = {}
     labels['title'] = "PPI Link Prediction"
-    labels['x_label'] = "Iterations"
+    labels['x_label'] = "Gradient Steps"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local'
@@ -86,7 +86,7 @@ def data_to_extract(username,args):
 def data_to_extract_ppi(username,args):
     labels = {}
     labels['title'] = "PPI Link Prediction"
-    labels['x_label'] = "Iterations"
+    labels['x_label'] = "Gradient Steps"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local'
@@ -107,11 +107,14 @@ def data_to_extract_ppi(username,args):
                                    [args.mlp],\
                                    [args.graph_sig],\
                                    [args.graph_sig_concat],\
+                                   [args.graph_sig_sig],\
+                                   [args.graph_sig_weights],\
                                    [args.graph_sig_random]\
                                    ]
 
-    labels['experiments_name'] = ['2-MAML', 'MAML-Concat','Random', 'NoFinetune',\
-          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Graph-Sig-Concat', 'Graph-Sig-Random']
+    labels['experiments_name'] = ['2-MAML', 'MAML','Random', 'NoFinetune',\
+          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Graph-Sig-Concat',\
+                                  'GS-Cond','GS-Weight', 'Graph-Sig-Random']
 
     if args.local:
         if args.local_block is not None:
@@ -148,12 +151,15 @@ def data_to_extract_firstmmdb(username,args):
                                    [args.adamic_adar],\
                                    [args.mlp],\
                                    [args.graph_sig],\
+                                   [args.graph_sig_sig],\
+                                   [args.graph_sig_weights],\
                                    [args.graph_sig_concat],\
                                    [args.graph_sig_random]\
                                    ]
 
     labels['experiments_name'] = ['2-MAML', 'MAML-Concat','Random', 'NoFinetune',\
-          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Graph-Sig-Concat', 'Graph-Sig-Random']
+          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Sig-Cond',\
+                                  'Sig-Weights','Graph-Sig Concat','Graph-Sig-Random']
 
     if args.local:
         if args.local_block is not None:
@@ -170,7 +176,7 @@ def data_to_extract_firstmmdb(username,args):
 def data_to_extract_reddit(username,args):
     labels = {}
     labels['title'] = "Reddit Link Prediction"
-    labels['x_label'] = "Iterations"
+    labels['x_label'] = "Gradient Steps"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local_Batch'
@@ -382,8 +388,11 @@ def my_plot(**kwargs):
         label.set_fontname('Arial')
         label.set_fontsize(20)
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-    plt.yticks(np.arange(0, 1, 0.1))
-    ax.xaxis.get_offset_text().set_fontsize(10)
+    # plt.yticks(np.arange(0.5, 1, 0.05))
+    ax.set_yticks(np.arange(0.5, 1, 0.05))
+    # plt.xticks(np.arange(0, 200, 5))
+    ax.xaxis.get_offset_text().set_fontsize(5)
+    ax.yaxis.get_offset_text().set_fontsize(5)
     axis_font = {'fontname': 'Arial', 'size': '24'}
     colors = sns.color_palette('colorblind', n_colors=len(data))
 
@@ -406,7 +415,7 @@ def my_plot(**kwargs):
         x_values = runs[0]
         y_values = runs[1]
         # Plot mean
-        plt.plot(x_values, y_values, color=color, linewidth=1.5, label=label)
+        plt.plot(x_values, y_values, color=color, linewidth=2.5, label=label)
 
     # Label figure
     ax.legend(loc='lower right', prop={'size': 16})
@@ -510,7 +519,9 @@ def main(args):
     if args.get_grad_steps:
         data_experiments_auc, data_experiments_ap = get_grad_step_data(args,labels=labels,\
                 wandb_project=wandb_project,wandb_username=wandb_username)
+        labels['y_label'] = 'AUC'
         fig_auc = my_plot(labels=labels, data=data_experiments_auc)
+        labels['y_label'] = 'AP'
         fig_ap = my_plot(labels=labels, data=data_experiments_ap)
         plot_dir = '../plots_datasets/'+ args.dataset + '/'
         if not os.path.exists(plot_dir):
@@ -556,6 +567,8 @@ if __name__ == '__main__':
     parser.add_argument('--adamic_adar', type=str, default='')
     parser.add_argument('--mlp', type=str, default='')
     parser.add_argument('--graph_sig', type=str, default='')
+    parser.add_argument('--graph_sig_sig', type=str, default='')
+    parser.add_argument('--graph_sig_weights', type=str, default='')
     parser.add_argument('--graph_sig_concat', type=str, default='')
     parser.add_argument('--graph_sig_random', type=str, default='')
     parser.add_argument('--dataset', type=str, default='PPI')

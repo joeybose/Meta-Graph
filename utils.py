@@ -186,10 +186,15 @@ def run_analysis(args, meta_model, train_loader):
     wl_scores, wl_scores_neg = run_wl_kernel(args,train_loader,meta_model,\
             args.meta_train_edge_ratio)
     print("Finished WL Scores")
-    deg_spearman_score = spearmanr(sig_scores.cpu().numpy().reshape(-1,1),\
-            degree_scores.reshape(-1,1))
-    deg_pearson_score = pearsonr(sig_scores.cpu().numpy().reshape(-1),\
-            degree_scores.reshape(-1))
+    try:
+        deg_spearman_score = spearmanr(sig_scores.cpu().numpy().reshape(-1,1),\
+                degree_scores.reshape(-1,1))
+        deg_pearson_score = pearsonr(sig_scores.cpu().numpy().reshape(-1),\
+                degree_scores.reshape(-1))
+        print("Deg Spearman score %f p-value %f"%(deg_spearman_score[0],deg_spearman_score[1]))
+        print("Deg Pearson score %f p-value %f"%(deg_pearson_score[0],deg_pearson_score[1]))
+    except:
+        print("Failed Degree Sim Test")
 
     emb_spearman_score = spearmanr(sig_scores.cpu().numpy().reshape(-1,1),\
             emb_scores.cpu().numpy().reshape(-1,1))
@@ -226,8 +231,6 @@ def run_analysis(args, meta_model, train_loader):
     diff_avg_triangles_pearson_score = pearsonr(sig_scores.cpu().numpy().reshape(-1), \
             diff_avg_triangles_scores.reshape(-1))
 
-    print("Deg Spearman score %f p-value %f"%(deg_spearman_score[0],deg_spearman_score[1]))
-    print("Deg Pearson score %f p-value %f"%(deg_pearson_score[0],deg_pearson_score[1]))
     print("Emb Spearman score %f p-value %f"%(emb_spearman_score[0],emb_spearman_score[1]))
     print("Emb Pearson score %f p-value %f"%(emb_pearson_score[0],emb_pearson_score[1]))
     print("Pos Spearman score %f p-value %f"%(spearman_score[0],spearman_score[1]))
@@ -256,17 +259,21 @@ def calculate_max_nodes_in_dataset(dataset,min_nodes):
     graph_id = 0
     total_nodes = 0
     big_node_graphs = 0
+    total_edges = 0
     for i, graph in enumerate(dataset):
         num_nodes = graph.num_nodes
-        total_nodes += num_nodes
         if num_nodes >= min_nodes:
+            total_nodes += num_nodes
+            total_edges += graph.edge_index.shape[1]
             big_node_graphs += 1
         if num_nodes > max_nodes:
             max_nodes = num_nodes
             graph_id = i
     avg_nodes = total_nodes / len(dataset)
+    avg_edges = total_edges / len(dataset)
     print("Max nodes is %d in graph %d" %(max_nodes,graph_id))
     print("Avg nodes is %d" %(avg_nodes))
+    print("Avg Edges is %d" %(avg_edges))
     print("Num 1000 nodes is %d| Total Graphs %d" %(big_node_graphs, len(dataset)))
     return max_nodes
 
@@ -507,9 +514,14 @@ def diff_num_nodes(args, model, dataloader):
     num_nodes_per_dataset = []
     for data_graph in dataset:
         sum_node_degree = 0
-        data = model.split_edges(data_graph,
-                                 val_ratio=args.meta_val_edge_ratio,
-                                 test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = data_graph.x.to(args.dev), \
+                data_graph.train_pos_edge_index.to(args.dev)
+            data = data_graph
+        except:
+            data = model.split_edges(data_graph,
+                                     val_ratio=args.meta_val_edge_ratio,
+                                     test_ratio=meta_test_edge_ratio)
         nx_graph = create_masked_networkx_graph(data)
         num_nodes_per_dataset.append(len(nx_graph.nodes))
 
@@ -527,9 +539,14 @@ def diff_num_edges(args, model, dataloader):
     num_edges_per_dataset = []
     for data_graph in dataset:
         sum_node_degree = 0
-        data = model.split_edges(data_graph,
-                                 val_ratio=args.meta_val_edge_ratio,
-                                 test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = data_graph.x.to(args.dev),\
+                data_graph.train_pos_edge_index.to(args.dev)
+            data = data_graph
+        except:
+            data = model.split_edges(data_graph,
+                                     val_ratio=args.meta_val_edge_ratio,
+                                     test_ratio=meta_test_edge_ratio)
         nx_graph = create_masked_networkx_graph(data)
         num_edges_per_dataset.append(len(nx_graph.edges))
 
@@ -547,9 +564,14 @@ def diff_avg_clustering_coeff(args, model, dataloader):
     avg_clustering_coeff_per_dataset = []
     for data_graph in dataset:
         sum_node_degree = 0
-        data = model.split_edges(data_graph,
-                                 val_ratio=args.meta_val_edge_ratio,
-                                 test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = data_graph.x.to(args.dev),\
+                data_graph.train_pos_edge_index.to(args.dev)
+            data = data_graph
+        except:
+            data = model.split_edges(data_graph,
+                                     val_ratio=args.meta_val_edge_ratio,
+                                     test_ratio=meta_test_edge_ratio)
         nx_graph = create_masked_networkx_graph(data)
         avg_clustering_coeff_per_dataset.append(nx.average_clustering(nx_graph))
 
@@ -567,9 +589,14 @@ def diff_avg_triangles(args, model, dataloader):
     avg_triangles_per_dataset = []
     for data_graph in dataset:
         sum_node_degree = 0
-        data = model.split_edges(data_graph,
-                                 val_ratio=args.meta_val_edge_ratio,
-                                 test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = data_graph.x.to(args.dev),\
+                data_graph.train_pos_edge_index.to(args.dev)
+            data = data_graph
+        except:
+            data = model.split_edges(data_graph,
+                                     val_ratio=args.meta_val_edge_ratio,
+                                     test_ratio=meta_test_edge_ratio)
         nx_graph = create_masked_networkx_graph(data)
         avg_triangles_per_dataset.append(mean(nx.triangles(nx_graph).values()))
 
@@ -608,7 +635,12 @@ def compute_sig_graph_sim(args, model, dataloader):
                 data_graph.x = torch.cat((data_graph.x,concat_feats),1)
         meta_test_edge_ratio = 1 - args.meta_val_edge_ratio - args.meta_train_edge_ratio
         data_graph.x.cuda()
-        data = model.split_edges(data_graph,val_ratio=args.meta_val_edge_ratio,test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = data_graph.x.to(args.dev),\
+                data_graph.train_pos_edge_index.to(args.dev)
+            data = data_graph
+        except:
+            data = model.split_edges(data_graph,val_ratio=args.meta_val_edge_ratio,test_ratio=meta_test_edge_ratio)
 
         x, train_pos_edge_index = data.x.to(args.dev), data.train_pos_edge_index.to(args.dev)
         test_pos_edge_index, test_neg_edge_index = data.test_pos_edge_index.to(args.dev),\
@@ -638,7 +670,13 @@ def run_wl_kernel(args, dataloader, model, edge_ratio):
     for graph in dataset:
         print("Graph : %d" %(i))
         i +=1
-        data = model.split_edges(graph,val_ratio=args.meta_val_edge_ratio,test_ratio=meta_test_edge_ratio)
+        try:
+            x, train_pos_edge_index = graph.x.to(args.dev), \
+                graph.train_pos_edge_index.to(args.dev)
+            data = graph
+        except:
+            data = model.split_edges(graph,val_ratio=args.meta_val_edge_ratio,\
+                                     test_ratio=meta_test_edge_ratio)
         nx_graph = create_masked_networkx_graph(data)
         neg_graph = erdos_renyi_graph(len(nx_graph),edge_ratio)
         pos_edge_list = list(nx_graph.edges())
@@ -659,8 +697,7 @@ def run_wl_kernel(args, dataloader, model, edge_ratio):
             neg_node_dict[node_id] = nx_graph.degree[node_id]
             neg_grakel_graph = [neg_edge_list, neg_node_dict]
         neg_graph_list.append(neg_grakel_graph)
-
-    wl_kernel = GraphKernel(kernel = [{"name": "weisfeiler_lehman", "niter": 5},\
+    wl_kernel = GraphKernel(kernel = [{"name": "weisfeiler_lehman", "n_iter": 5},\
                 {"name": "subtree_wl"}], Nystroem=len(dataset))
     kernel_mat = wl_kernel.fit_transform(pos_graph_list)
     neg_kernel_mat = wl_kernel.transform(neg_graph_list)
