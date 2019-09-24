@@ -1,2 +1,2 @@
 ### Meta-Learning on Graphs ###
-Author: Joey Bose
+ICLR 2020 Submission: Meta-Graph: Few Short Link Prediction using Meta Learning
