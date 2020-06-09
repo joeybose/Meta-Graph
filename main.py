@@ -13,8 +13,7 @@ from torch_geometric.nn import GATConv, GCNConv
 from autoencoder import GAE, VGAE
 from torch_geometric.data import DataLoader
 from maml import meta_gradient_step
-from models import Encoder, MetaEncoder, GraphSignature, MetaMLPEncoder,\
-        MetaSignatureEncoder, MetaGatedSignatureEncoder
+from models import *
 from utils import global_test, test, EarlyStopping, seed_everything,\
         filter_state_dict, create_nx_graph, calc_adamic_adar_score,\
         create_nx_graph_deepwalk, train_deepwalk_model,calc_deepwalk_score
@@ -56,15 +55,58 @@ def test(args,meta_model,optimizer,test_loader,train_epoch,return_val=False,inne
             test_avg_ap_list.append(ap)
             test_graph_id_global += 1
             continue
-        if args.deepwalk_baseline:
-            # Val Ratio is Fixed at 0.1
+        if args.deepwalk_baseline or args.deepwalk_and_mlp:
+            # Val Ratio is Fixed at 0.2
             meta_test_edge_ratio = 1 - args.meta_val_edge_ratio - args.meta_train_edge_ratio
             data = meta_model.split_edges(data[0], val_ratio=args.meta_val_edge_ratio, \
                                           test_ratio=meta_test_edge_ratio)
             G = create_nx_graph_deepwalk(data)
-            node_vectors,entity2index = train_deepwalk_model(G,seed=seed)
-            auc, ap = calc_deepwalk_score(data.test_pos_edge_index, data.test_neg_edge_index, node_vectors,entity2index)
-            print("Graph %d| Test AUC: %f AP: %f" %(test_graph_id_global, auc,ap))
+            node_vectors, entity2index, index2entity = train_deepwalk_model(G,seed=seed)
+            if args.deepwalk_and_mlp:
+                early_stopping = EarlyStopping(patience=args.patience, verbose=False)
+                input_dim = args.num_features + node_vectors.shape[1]
+                mlp = MLPEncoder(args, input_dim,
+                                 args.num_channels).to(args.dev)
+                mlp_optimizer = torch.optim.Adam(mlp.parameters(),
+                                                 lr=args.mlp_lr)
+                # node1 = data.x[torch.tensor(list(entity2index.keys())).long()]
+                all_node_list = list(range(0, len(data.x)))
+                node_order = [entity2index[node_i] for node_i in all_node_list]
+                node1 = torch.tensor(node_vectors[node_order])
+                for mlp_epochs in range(0, args.epochs):
+                    mlp_optimizer.zero_grad()
+                    # node_inp = torch.cat([torch.tensor(node_vectors), node1], dim=1)
+                    node_inp = torch.cat([data.x, node1], dim=1)
+                    node_inp = node_inp.to(args.dev)
+                    z = mlp(node_inp, edge_index=None)
+                    loss = meta_model.recon_loss(z, data.train_pos_edge_index.cuda())
+                    loss.backward()
+                    mlp_optimizer.step()
+                    if mlp_epochs % 10 == 0:
+                        if mlp_epochs % 50 == 0:
+                            print("Epoch %d, Loss: %f" %(mlp_epochs, loss))
+                        with torch.no_grad():
+                            val_auc, val_ap = meta_model.test(z, data.val_pos_edge_index,
+                                                 data.val_neg_edge_index)
+                        early_stopping(val_auc, meta_model)
+                    if early_stopping.early_stop:
+                        print("Early stopping for Graph %d | AUC: %f AP: %f" \
+                                %(test_graph_id_global, val_auc, val_ap))
+                        break
+
+                node_inp = torch.cat([data.x, node1], dim=1)
+                # node_inp = torch.cat([torch.tensor(node_vectors), node1], dim=1)
+                node_inp = node_inp.to(args.dev)
+                node_vectors = mlp(node_inp, edge_index=None)
+                auc, ap = meta_model.test(z, data.test_pos_edge_index,
+                                     data.test_neg_edge_index)
+            else:
+                node_vectors = node_vectors.detach().cpu().numpy()
+                auc, ap = calc_deepwalk_score(data.test_pos_edge_index,
+                                              data.test_neg_edge_index,
+                                              node_vectors,entity2index)
+
+            print("Graph %d| Test AUC: %f AP: %f" %(test_graph_id_global, auc, ap))
             test_avg_auc_list.append(auc)
             test_avg_ap_list.append(ap)
             test_graph_id_global += 1
@@ -108,14 +150,16 @@ def test(args,meta_model,optimizer,test_loader,train_epoch,return_val=False,inne
             args.experiment.log_metric(inner_auc_metric,sum(test_inner_avg_auc_list)/len(test_inner_avg_auc_list),step=train_epoch)
             args.experiment.log_metric(inner_ap_metric,sum(test_inner_avg_ap_list)/len(test_inner_avg_ap_list),step=train_epoch)
     if args.wandb:
-        if len(auc_list) > 0 and len(ap_list) > 0:
+        if len(test_avg_auc_list) > 0 and len(test_avg_ap_list) > 0:
             auc_metric = 'Test_Avg' +'_AUC'
             ap_metric = 'Test_Avg' +'_AP'
-            inner_auc_metric = 'Test_Inner_Avg' +'_AUC'
-            inner_ap_metric = 'Test_Inner_Avg' +'_AP'
             wandb.log({auc_metric:sum(test_avg_auc_list)/len(test_avg_auc_list),\
                     ap_metric:sum(test_avg_ap_list)/len(test_avg_ap_list),\
-                    inner_auc_metric:sum(test_inner_avg_auc_list)/len(test_inner_avg_auc_list),
+                    "x":train_epoch},commit=False)
+        if len(test_inner_avg_auc_list) > 0 and len(test_inner_avg_ap_list) > 0:
+            inner_auc_metric = 'Test_Inner_Avg' +'_AUC'
+            inner_ap_metric = 'Test_Inner_Avg' +'_AP'
+            wandb.log({inner_auc_metric:sum(test_inner_avg_auc_list)/len(test_inner_avg_auc_list),
                     inner_ap_metric:sum(test_inner_avg_ap_list)/len(test_inner_avg_ap_list),
                     "x":train_epoch},commit=False)
     if len(test_inner_avg_ap_list) > 0:
@@ -301,7 +345,9 @@ def opus_wrapper(**kwargs):
 def main(args):
     assert args.model in ['GAE', 'VGAE']
     kwargs = {'GAE': GAE, 'VGAE': VGAE}
-    kwargs_enc = {'GCN': MetaEncoder, 'MLP': MetaMLPEncoder, 'GraphSignature': MetaSignatureEncoder, 'GatedGraphSignature': MetaGatedSignatureEncoder}
+    kwargs_enc = {'GCN': MetaEncoder, 'FC': MLPEncoder, 'MLP': MetaMLPEncoder,
+                  'GraphSignature': MetaSignatureEncoder,
+                  'GatedGraphSignature': MetaGatedSignatureEncoder}
 
     path = osp.join(
         osp.dirname(osp.realpath(__file__)), '..', 'data', args.dataset)
@@ -424,8 +470,14 @@ def main(args):
     torch.save(meta_model.state_dict(), save_path)
 
     ''' Run to Convergence '''
+    if args.ego:
+        optimizer = torch.optim.Adam(meta_model.parameters(), lr=args.meta_lr)
+        args.inner_lr = args.inner_lr * args.reset_inner_factor
     val_inner_avg_auc, val_inner_avg_ap = test(args,meta_model,optimizer,val_loader,epoch,\
             return_val=True,inner_steps=1000)
+    if args.ego:
+        optimizer = torch.optim.Adam(meta_model.parameters(), lr=args.meta_lr)
+        args.inner_lr = args.inner_lr * args.reset_inner_factor
     test_inner_avg_auc, test_inner_avg_ap = test(args,meta_model,optimizer,test_loader,epoch,\
             return_val=True,inner_steps=1000)
     if args.comet:
@@ -461,7 +513,9 @@ if __name__ == '__main__':
             help='Used to split number of graphs for va1idation if not provided')
     parser.add_argument('--num_gated_layers', default=4, type=int,\
             help='Number of layers to use for the Gated Graph Conv Layer')
+    parser.add_argument('--mlp_lr', default=1e-3, type=float)
     parser.add_argument('--inner-lr', default=0.01, type=float)
+    parser.add_argument('--reset_inner_factor', default=20, type=float)
     parser.add_argument('--meta-lr', default=0.001, type=float)
     parser.add_argument('--order', default=2, type=int, help='MAML gradient order')
     parser.add_argument('--inner_steps', type=int, default=50)
@@ -496,6 +550,8 @@ if __name__ == '__main__':
 		help='Use Adamic-Adar Baseline')
     parser.add_argument("--deepwalk_baseline", action ="store_true", default=False,
         help = "Use Deepwalk Baseline")
+    parser.add_argument("--deepwalk_and_mlp", action ="store_true", default=False,
+        help = "Use Deepwalk Baseline and ML and MLPP")
     parser.add_argument("--reprocess", action="store_true", default=False,
 		help='Reprocess AMINER dataset')
     parser.add_argument("--ego", action="store_true", default=False,
@@ -512,7 +568,7 @@ if __name__ == '__main__':
                         help='random seed (default: 1)')
     parser.add_argument("--comet_apikey", type=str,\
             help='Api for comet logging')
-    parser.add_argument('--patience', type=int, default=40, help="K-core for Graph")
+    parser.add_argument('--patience', type=int, default=40, help="Early Stopping")
     parser.add_argument('--debug', default=False, action='store_true',
                         help='Debug')
     parser.add_argument('--opus', default=False, action='store_true',

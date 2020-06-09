@@ -240,7 +240,6 @@ def get_data(args, title, x_label, y_label, labels_list, data, COMET_API_KEY,\
             continue
         data_runs_auc = []
         data_runs_ap = []
-        ipdb.set_trace()
         if len(runs) > 0:
             for exp_key in runs:
                 try:
@@ -351,7 +350,6 @@ def main(args):
     Joey_COMET_REST_API_KEY="gvhm1m1y8OUTnPRqJarpeTapL"
     comet_project = args.comet_project
     comet_username = "joeybose"
-    ipdb.set_trace()
     if args.dataset == 'PPI':
         extract_func = data_to_extract_ppi
     elif args.dataset == 'Reddit':
@@ -371,8 +369,10 @@ def main(args):
         param_str = '_Local_'
     else:
         param_str = '_Global_'
-    fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + param_str + args.mode +'_AUC.png')
-    fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + param_str+ args.mode + '_AP.png')
+    fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str +
+                    param_str + args.mode +'_new_AUC.png')
+    fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str +
+                   param_str+ args.mode + '_new_AP.png')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

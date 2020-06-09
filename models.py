@@ -63,6 +63,18 @@ class MetaMLPEncoder(torch.nn.Module):
                     weights['encoder.fc_mu.bias'])),F.relu(F.linear(x,\
                     weights['encoder.fc_logvar.weight'],weights['encoder.fc_logvar.bias']))
 
+class MLPEncoder(torch.nn.Module):
+    def __init__(self, args, in_channels, out_channels):
+        super(MLPEncoder, self).__init__()
+        self.args = args
+        self.fc1 = nn.Linear(in_channels, 2 * out_channels, bias=True)
+        self.fc2 = nn.Linear(2 * out_channels, out_channels, bias=True)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return x
+
 class GraphSignature(torch.nn.Module):
     def __init__(self, args, in_channels, out_channels):
         super(GraphSignature, self).__init__()
@@ -165,6 +177,10 @@ class MetaGatedSignatureEncoder(torch.nn.Module):
         if inner_loop:
             with torch.no_grad():
                 sig_gamma_1, sig_beta_1, sig_gamma_2, sig_beta_2 = self.signature(x, edge_index, weights, sig_keys)
+                self.cache_sig_out = [sig_gamma_1,sig_beta_1,sig_gamma_2,sig_beta_2,\
+                                      torch.sigmoid(weights['encoder.conv1.gating_weights']),\
+                                      torch.sigmoid(weights['encoder.conv_mu.gating_weights']),\
+                                      torch.sigmoid(weights['encoder.conv_logvar.gating_weights'])]
         else:
             sig_gamma_1, sig_beta_1, sig_gamma_2, sig_beta_2 = self.signature(x, edge_index, weights, sig_keys)
 

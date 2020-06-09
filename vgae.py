@@ -11,7 +11,7 @@ from torch_geometric.nn import GATConv, GCNConv, GAE, VGAE
 from torch_geometric.data import DataLoader
 import numpy as np
 from data import load_dataset
-from models import Encoder, MetaEncoder, GraphSignature, MetaMLPEncoder, MetaSignatureEncoder
+from models import *
 from utils import global_test, test, EarlyStopping, seed_everything
 import json
 import ipdb
@@ -41,62 +41,11 @@ def test(model, x, train_pos_edge_index, pos_edge_index, neg_edge_index):
         z = model.encode(x, train_pos_edge_index)
     return model.test(z, pos_edge_index, neg_edge_index)
 
-def opus_wrapper(**kwargs):
-    from comet_ml import Experiment
-    import torch
-    import torch.nn.functional as F
-    import os
-    import os.path as osp
-    import argparse
-    from data import load_dataset
-    from torch_geometric.datasets import Planetoid,PPI,TUDataset
-    import torch_geometric.transforms as T
-    from torch_geometric.nn import GATConv, GCNConv, GAE, VGAE
-    from torch_geometric.data import DataLoader
-    from maml import meta_gradient_step
-    from models import Encoder, MetaEncoder, GraphSignature, MetaMLPEncoder, MetaSignatureEncoder, MetaGatedSignatureEncoder
-    from utils import global_test, test, seed_everything
-    from collections import OrderedDict
-    from torchviz import make_dot
-    import wandb
-    import ipdb
-    os.environ['WANDB_API_KEY'] = "7110d81f721ee9a7da84c67bcb319fc902f7a180"
-    parser = argparse.ArgumentParser()
-    my_args = parser.parse_args([])
-    my_args.__dict__.update(kwargs)
-    my_args.dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("Checking CUDA")
-    print(my_args.dev)
-
-    if my_args.dataset=='PPI':
-        project_name = 'meta-graph-ppi'
-    elif my_args.dataset=='REDDIT-MULTI-12K':
-        project_name = "meta-graph-reddit"
-    elif my_args.dataset=='FIRSTMM_DB':
-        project_name = "meta-graph-firstmmdb"
-    elif my_args.dataset=='DD':
-        project_name = "meta-graph-dd"
-    elif my_args.dataset=='AMINER':
-        project_name = "meta-graph-aminer"
-    else:
-        project_name='meta-graph'
-
-    if my_args.comet:
-        experiment = Experiment(api_key=my_args.comet_apikey,\
-                project_name=project_name,\
-                workspace=my_args.comet_username)
-        experiment.set_name(my_args.namestr)
-        my_args.experiment = experiment
-
-    if my_args.wandb:
-        wandb.init(project=project_name,name=my_args.namestr)
-    print(my_args)
-    return main(my_args)
-
 def main(args):
     assert args.model in ['GAE', 'VGAE']
     kwargs = {'GAE': GAE, 'VGAE': VGAE}
-    kwargs_enc = {'GCN': Encoder, 'MLP': MetaMLPEncoder, 'GraphSignature': MetaSignatureEncoder}
+    kwargs_enc = {'GCN': Encoder, 'FC': MLPEncoder, 'MLP': MetaMLPEncoder,
+                  'GraphSignature': MetaSignatureEncoder}
 
     path = osp.join(
         osp.dirname(osp.realpath(__file__)), '..', 'data', args.dataset)
@@ -145,6 +94,9 @@ def main(args):
                 x, train_pos_edge_index = data.x.to(args.dev), data.train_pos_edge_index.to(args.dev)
                 for epoch in range(0, args.epochs):
                     if not args.random_baseline:
+                        if args.train_with_val:
+                            train_pos_edge_index = torch.cat([data.train_pos_edge_index,
+                                       data.val_pos_edge_index], dim=1).cuda()
                         train(model,args,x,train_pos_edge_index,data.num_nodes,optimizer)
                     auc, ap = test(model, x, train_pos_edge_index,
                             data.test_pos_edge_index, data.test_neg_edge_index)
@@ -343,9 +295,15 @@ def main(args):
                 val_pos_edge_index = data.val_pos_edge_index.to(args.dev)
                 for epoch in range(0, args.epochs):
                     if not args.random_baseline:
+                        if args.train_with_val:
+                            train_pos_edge_index =torch.cat([data.train_pos_edge_index,
+                                       data.val_pos_edge_index], dim=1).cuda()
+                            val_loss = val(model,args,x,train_pos_edge_index,data.num_nodes)
+                            early_stopping(val_loss, test_model)
+                        else:
+                            val_loss = val(model,args,x,val_pos_edge_index,data.num_nodes)
+                            early_stopping(val_loss, test_model)
                         train(test_model,args,x,train_pos_edge_index,data.num_nodes,optimizer)
-                        val_loss = val(model,args,x,val_pos_edge_index,data.num_nodes)
-                        early_stopping(val_loss, test_model)
                     auc, ap = test(test_model, x, train_pos_edge_index,
                             data.test_pos_edge_index, data.test_neg_edge_index)
 
@@ -435,6 +393,8 @@ if __name__ == '__main__':
 		help='Use a random node features')
     parser.add_argument('--val_ratio', type=float, default='0.1',\
             help='Used to split number of graphs for validation if not provided')
+    parser.add_argument('--train_with_val', default=False, action='store_true',
+                        help='Combine Train + Val edges')
     parser.add_argument('--do_val', default=False, action='store_true',
                         help='Do Validation')
     parser.add_argument("--comet", action="store_true", default=False,

@@ -381,7 +381,7 @@ def train_deepwalk_model(G,number_walks = 10, walk_length = 80,seed= 0,epochs =1
     entity2index = {}
     for i in range(len(index2entity)):
         entity2index[int(index2entity[i])] = i
-    return node_vectors,entity2index
+    return node_vectors,entity2index,index2entity
 
 
 def create_nx_graph(data):

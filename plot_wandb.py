@@ -7,6 +7,8 @@ import wandb
 import matplotlib
 import numpy as np
 import ipdb
+import pandas as pd
+
 os.environ['WANDB_API_KEY'] = "7110d81f721ee9a7da84c67bcb319fc902f7a180"
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -54,7 +56,7 @@ SetPlotRC()
 def data_to_extract(username,args):
     labels = {}
     labels['title'] = "PPI Link Prediction"
-    labels['x_label'] = "Gradient Steps"
+    labels['x_label'] = "Gradient Updates"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local'
@@ -86,7 +88,7 @@ def data_to_extract(username,args):
 def data_to_extract_ppi(username,args):
     labels = {}
     labels['title'] = "PPI Link Prediction"
-    labels['x_label'] = "Gradient Steps"
+    labels['x_label'] = "Gradient Updates"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local'
@@ -114,7 +116,7 @@ def data_to_extract_ppi(username,args):
 
     labels['experiments_name'] = ['2-MAML', 'MAML','Random', 'NoFinetune',\
           'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Graph-Sig-Concat',\
-                                  'GS-Cond','GS-Weight', 'Graph-Sig-Random']
+                                  'GS-Gating','GS-Weights', 'Graph-Sig-Random']
 
     if args.local:
         if args.local_block is not None:
@@ -157,9 +159,9 @@ def data_to_extract_firstmmdb(username,args):
                                    [args.graph_sig_random]\
                                    ]
 
-    labels['experiments_name'] = ['2-MAML', 'MAML-Concat','Random', 'NoFinetune',\
-          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'Sig-Cond',\
-                                  'Sig-Weights','Graph-Sig Concat','Graph-Sig-Random']
+    labels['experiments_name'] = ['MAML', 'MAML-Concat','Random', 'NoFinetune',\
+          'Finetune', 'Adamic-Adar', 'MLP', 'Graph-Sig', 'GS-Gating',\
+                                  'GS-Weights','Graph-Sig Concat','Graph-Sig-Random']
 
     if args.local:
         if args.local_block is not None:
@@ -176,7 +178,7 @@ def data_to_extract_firstmmdb(username,args):
 def data_to_extract_reddit(username,args):
     labels = {}
     labels['title'] = "Reddit Link Prediction"
-    labels['x_label'] = "Gradient Steps"
+    labels['x_label'] = "Gradient Updates"
     labels['y_label'] = "Percent"
     if args.local:
         param_str = 'Local_Batch'
@@ -273,6 +275,8 @@ def get_grad_step_data(args, labels, wandb_username, wandb_project):
 
             print("%s AUC %f After %d Grad Steps"%(my_run.name,data_points_auc[int(args.get_step/5)], args.get_step))
             print("%s AP %f After %d Grad Steps"%(my_run.name,data_points_ap[int(args.get_step/5)], args.get_step))
+            print("Max AUC %f"%(data_points_auc.max()))
+            print("Max AP %f"%(data_points_ap.max()))
     clean_data_experiments_auc = truncate_array(data_experiments_auc)
     clean_data_experiments_ap = truncate_array(data_experiments_ap)
     return clean_data_experiments_auc, clean_data_experiments_ap
@@ -295,8 +299,9 @@ def get_data(args, title, x_label, y_label, labels_list, data, wandb_username, w
         # Accumulate data for all runs of a given experiment.
         data_runs_auc = []
         data_runs_ap = []
-        if len(runs) > 0:
+        if len(runs[0]) > 0:
             for exp_key in runs:
+                # ipdb.set_trace()
                 try:
                     my_run = api.run("%s/%s/%s" %(wandb_username,\
                             wandb_project,exp_key))
@@ -404,7 +409,7 @@ def my_plot(**kwargs):
     for label,key in zip(labels.get('experiments_name'),labels.get('experiments_key')):
         if len(key[0]) > 0:
             my_labels.append(label)
-
+    df = pd.DataFrame(columns = my_labels)
     for runs, label, color in zip(data, my_labels, colors):
         unique_x_values = set()
 
@@ -414,6 +419,7 @@ def my_plot(**kwargs):
         runs = np.asarray(runs).T
         x_values = runs[0]
         y_values = runs[1]
+        df[label] = y_values
         # Plot mean
         plt.plot(x_values, y_values, color=color, linewidth=2.5, label=label)
 
@@ -428,7 +434,7 @@ def my_plot(**kwargs):
     # remove grid lines
     ax.grid(False)
     plt.grid(b=False, color='w')
-    return fig
+    return fig, df
 
 def plot(**kwargs):
     labels = kwargs.get('labels')
@@ -454,6 +460,7 @@ def plot(**kwargs):
     if args.mode=='Test':
         position = 0
 
+    df = pd.DataFrame(columns = labels)
     for runs, label, color in zip(data, labels.get('experiments_name'), colors):
         unique_x_values = set()
         for run in runs:
@@ -467,7 +474,7 @@ def plot(**kwargs):
         for x in x_values:
             y_values_mean.append(mean([run.get(x) for run in runs if run.get(x)]))
             y_values_std.append(np.std([run.get(x) for run in runs if run.get(x)]))
-
+        # ipdb.set_trace()
         print("%s average result after graphs %f" %(label,y_values_mean[-1]))
         if args.mode =='Train' or args.no_bar_plot:
             x_values.insert(0,0)
@@ -520,14 +527,21 @@ def main(args):
         data_experiments_auc, data_experiments_ap = get_grad_step_data(args,labels=labels,\
                 wandb_project=wandb_project,wandb_username=wandb_username)
         labels['y_label'] = 'AUC'
-        fig_auc = my_plot(labels=labels, data=data_experiments_auc)
+        fig_auc, df_auc = my_plot(labels=labels, data=data_experiments_auc)
         labels['y_label'] = 'AP'
-        fig_ap = my_plot(labels=labels, data=data_experiments_ap)
+        fig_ap, df_ap = my_plot(labels=labels, data=data_experiments_ap)
         plot_dir = '../plots_datasets/'+ args.dataset + '/'
         if not os.path.exists(plot_dir):
             os.makedirs(plot_dir)
-        fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + '_' + args.mode +'_grad_AUC.png')
-        fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + '_' + args.mode + '_grad_AP.png')
+        fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' +
+                        args.name_str+ '_'+ args.file_str + '_' + args.mode
+                        +'_new2_grad_AUC.png')
+        fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.name_str +
+                       '_' + args.file_str + '_' + args.mode + '_new2_grad_AP.png')
+        df_auc.to_csv('../plots_datasets/'+ args.dataset + '/' + args.name_str+
+                  '_'+ args.file_str + '_' + args.mode +'_new2_grad_AUC.csv')
+        df_ap.to_csv('../plots_datasets/'+ args.dataset + '/' + args.name_str+
+                  '_'+ args.file_str + '_' + args.mode +'_new2_grad_AP.csv')
         print("Finished plotting AUC + AP")
     else:
         data_experiments_auc, data_experiments_ap = get_data(args,labels.get('title'), labels.get('x_label'),\
@@ -546,8 +560,10 @@ def main(args):
         if not os.path.exists(plot_dir):
             os.makedirs(plot_dir)
 
-        fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + param_str +'_AUC.png')
-        fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str + param_str + '_AP.png')
+        fig_auc.savefig('../plots_datasets/'+ args.dataset + '/' +
+                        args.file_str + param_str +'_new_AUC.png')
+        fig_ap.savefig('../plots_datasets/'+ args.dataset + '/' + args.file_str
+                       + param_str + '_new_AP.png')
         print("Finished plotting AUC + AP")
 
 if __name__ == '__main__':
@@ -558,6 +574,7 @@ if __name__ == '__main__':
     parser.add_argument("--get_grad_steps", action="store_true", default=False)
     parser.add_argument('--mode', type=str, default='Train')
     parser.add_argument('--file_str', type=str, default='')
+    parser.add_argument('--name_str', type=str, default='')
     parser.add_argument('--one_maml', type=str, default='')
     parser.add_argument('--two_maml', type=str, default='')
     parser.add_argument('--concat', type=str, default='')
