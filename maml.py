@@ -4,7 +4,7 @@ from collections import OrderedDict
 from torch.optim import Optimizer
 from torch.nn import Module
 from typing import Dict, List, Callable, Union
-from utils import custom_clip_grad_norm_, val, test, EarlyStopping, monitor_grad_norm, monitor_grad_norm_2, monitor_weight_norm
+from utils.utils import custom_clip_grad_norm_, val, test, EarlyStopping, monitor_grad_norm, monitor_grad_norm_2, monitor_weight_norm
 from torchviz import make_dot
 import ipdb
 import wandb

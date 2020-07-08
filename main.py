@@ -5,19 +5,19 @@ import os
 import sys
 import os.path as osp
 import argparse
-from data import load_dataset
+from data.data import load_dataset
 from torch_geometric.datasets import Planetoid,PPI,TUDataset
 import torch_geometric.transforms as T
 import json
 from torch_geometric.nn import GATConv, GCNConv
-from autoencoder import GAE, VGAE
+from models.autoencoder import MyGAE, MyVGAE
 from torch_geometric.data import DataLoader
 from maml import meta_gradient_step
-from models import *
-from utils import global_test, test, EarlyStopping, seed_everything,\
+from models.models import *
+from utils.utils import global_test, test, EarlyStopping, seed_everything,\
         filter_state_dict, create_nx_graph, calc_adamic_adar_score,\
         create_nx_graph_deepwalk, train_deepwalk_model,calc_deepwalk_score
-from utils import run_analysis
+from utils.utils import run_analysis
 from collections import OrderedDict
 from torchviz import make_dot
 import numpy as np
@@ -290,61 +290,9 @@ def validation(args,meta_model,optimizer,val_loader,train_epoch,return_val=False
         print("Val Max AUC :%f | Val Max AP: %f" %(max_auc,max_ap))
         return max_auc, max_ap
 
-def opus_wrapper(**kwargs):
-    from comet_ml import Experiment
-    import torch
-    import torch.nn.functional as F
-    import os
-    import os.path as osp
-    import argparse
-    from data import load_dataset
-    from torch_geometric.datasets import Planetoid,PPI,TUDataset
-    import torch_geometric.transforms as T
-    from torch_geometric.nn import GATConv, GCNConv, GAE, VGAE
-    from torch_geometric.data import DataLoader
-    from maml import meta_gradient_step
-    from models import Encoder, MetaEncoder, GraphSignature, MetaMLPEncoder, MetaSignatureEncoder, MetaGatedSignatureEncoder
-    from utils import global_test, test, seed_everything
-    from collections import OrderedDict
-    from torchviz import make_dot
-    import wandb
-    import ipdb
-    os.environ['WANDB_API_KEY'] = "7110d81f721ee9a7da84c67bcb319fc902f7a180"
-    parser = argparse.ArgumentParser()
-    my_args = parser.parse_args([])
-    my_args.__dict__.update(kwargs)
-    my_args.dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("Checking CUDA")
-    print(my_args.dev)
-
-    if my_args.dataset=='PPI':
-        project_name = 'meta-graph-ppi'
-    elif my_args.dataset=='REDDIT-MULTI-12K':
-        project_name = "meta-graph-reddit"
-    elif my_args.dataset=='FIRSTMM_DB':
-        project_name = "meta-graph-firstmmdb"
-    elif my_args.dataset=='DD':
-        project_name = "meta-graph-dd"
-    elif my_args.dataset=='AMINER':
-        project_name = "meta-graph-aminer"
-    else:
-        project_name='meta-graph'
-
-    if my_args.comet:
-        experiment = Experiment(api_key=my_args.comet_apikey,\
-                project_name=project_name,\
-                workspace=my_args.comet_username)
-        experiment.set_name(my_args.namestr)
-        my_args.experiment = experiment
-
-    if my_args.wandb:
-        wandb.init(project=project_name,name=my_args.namestr)
-    print(my_args)
-    return main(my_args)
-
 def main(args):
     assert args.model in ['GAE', 'VGAE']
-    kwargs = {'GAE': GAE, 'VGAE': VGAE}
+    kwargs = {'GAE': MyGAE, 'VGAE': MyVGAE}
     kwargs_enc = {'GCN': MetaEncoder, 'FC': MLPEncoder, 'MLP': MetaMLPEncoder,
                   'GraphSignature': MetaSignatureEncoder,
                   'GatedGraphSignature': MetaGatedSignatureEncoder}

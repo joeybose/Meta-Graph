@@ -11,7 +11,7 @@ from torch_geometric.utils import add_remaining_self_loops
 from torch.distributions import Normal
 from torch import nn
 import torch.nn.functional as F
-from utils import uniform
+from utils.utils import uniform
 import ipdb
 
 def glorot(tensor):

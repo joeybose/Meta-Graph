@@ -1,6 +1,6 @@
 import math
 import random
-
+import ipdb
 import torch
 import numpy as np
 from sklearn.metrics import roc_auc_score, average_precision_score
@@ -79,7 +79,7 @@ class InnerProductDecoder(torch.nn.Module):
         return torch.sigmoid(adj) if sigmoid else adj
 
 
-class GAE(torch.nn.Module):
+class MyGAE(torch.nn.Module):
     r"""The Graph Auto-Encoder model from the
     `"Variational Graph Auto-Encoders" <https://arxiv.org/abs/1611.07308>`_
     paper based on user-defined encoder and decoder models.
@@ -93,7 +93,7 @@ class GAE(torch.nn.Module):
     """
 
     def __init__(self, encoder, decoder=None):
-        super(GAE, self).__init__()
+        super(MyGAE, self).__init__()
         self.encoder = encoder
         self.decoder = InnerProductDecoder() if decoder is None else decoder
 
@@ -215,7 +215,7 @@ class GAE(torch.nn.Module):
         return roc_auc_score(y, pred), average_precision_score(y, pred)
 
 
-class VGAE(GAE):
+class MyVGAE(MyGAE):
     r"""The Variational Graph Auto-Encoder model from the
     `"Variational Graph Auto-Encoders" <https://arxiv.org/abs/1611.07308>`_
     paper.
@@ -230,7 +230,7 @@ class VGAE(GAE):
     """
 
     def __init__(self, encoder, decoder=None):
-        super(VGAE, self).__init__(encoder, decoder=decoder)
+        super(MyVGAE, self).__init__(encoder, decoder=decoder)
 
     def reparametrize(self, mu, logvar):
         if self.training:
@@ -264,87 +264,3 @@ class VGAE(GAE):
         return -0.5 * torch.mean(
             torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1))
 
-
-class ARGA(GAE):
-    r"""The Adversarially Regularized Graph Auto-Encoder model from the
-    `"Adversarially Regularized Graph Autoencoder for Graph Embedding"
-    <https://arxiv.org/abs/1802.04407>`_ paper.
-    paper.
-
-    Args:
-        encoder (Module): The encoder module.
-        discriminator (Module): The discriminator module.
-        decoder (Module, optional): The decoder module. If set to :obj:`None`,
-            will default to the
-            :class:`torch_geometric.nn.models.InnerProductDecoder`.
-            (default: :obj:`None`)
-    """
-
-    def __init__(self, encoder, discriminator, decoder=None):
-        self.discriminator = discriminator
-        super(ARGA, self).__init__(encoder, decoder)
-
-    def reset_parameters(self):
-        super(ARGA, self).reset_parameters()
-        reset(self.discriminator)
-
-    def reg_loss(self, z):
-        r"""Computes the regularization loss of the encoder.
-
-        Args:
-            z (Tensor): The latent space :math:`\mathbf{Z}`.
-        """
-        real = torch.sigmoid(self.discriminator(z))
-        real_loss = -torch.log(real + EPS).mean()
-        return real_loss
-
-    def discriminator_loss(self, z):
-        r"""Computes the loss of the discriminator.
-
-        Args:
-            z (Tensor): The latent space :math:`\mathbf{Z}`.
-        """
-        real = torch.sigmoid(self.discriminator(torch.randn_like(z)))
-        fake = torch.sigmoid(self.discriminator(z.detach()))
-        real_loss = -torch.log(real + EPS).mean()
-        fake_loss = -torch.log(1 - fake + EPS).mean()
-        return real_loss + fake_loss
-
-
-class ARGVA(ARGA):
-    r"""The Adversarially Regularized Variational Graph Auto-Encoder model from
-    the `"Adversarially Regularized Graph Autoencoder for Graph Embedding"
-    <https://arxiv.org/abs/1802.04407>`_ paper.
-    paper.
-
-    Args:
-        encoder (Module): The encoder module to compute :math:`\mu` and
-            :math:`\log\sigma^2`.
-        discriminator (Module): The discriminator module.
-        decoder (Module, optional): The decoder module. If set to :obj:`None`,
-            will default to the
-            :class:`torch_geometric.nn.models.InnerProductDecoder`.
-            (default: :obj:`None`)
-    """
-
-    def __init__(self, encoder, discriminator, decoder=None):
-        super(ARGVA, self).__init__(encoder, discriminator, decoder)
-        self.VGAE = VGAE(encoder, decoder)
-
-    @property
-    def __mu__(self):
-        return self.VGAE.__mu__
-
-    @property
-    def __logvar__(self):
-        return self.VGAE.__logvar__
-
-    def reparametrize(self, mu, logvar):
-        return self.VGAE.reparametrize(mu, logvar)
-
-    def encode(self, *args, **kwargs):
-        """"""
-        return self.VGAE.encode(*args, **kwargs)
-
-    def kl_loss(self, mu=None, logvar=None):
-        return self.VGAE.kl_loss(mu, logvar)

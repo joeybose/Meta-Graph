@@ -8,11 +8,11 @@ import ipdb
 import torch_geometric.transforms as T
 from torch_geometric.data import DataLoader,DataListLoader
 import ssl
-from utils import calculate_max_nodes_in_dataset, filter_dataset
+from utils.utils import calculate_max_nodes_in_dataset, filter_dataset
 import urllib
 from random import shuffle
 from torch_geometric.datasets import Planetoid,PPI,TUDataset
-from aminer_dataset import Aminer_Dataset
+from .aminer_dataset import Aminer_Dataset
 
 def load_dataset(name,args):
     ssl._create_default_https_context = ssl._create_unverified_context
