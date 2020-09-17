@@ -22,7 +22,7 @@ def load_dataset(name,args):
     args.resplit = True
     if name == 'PPI':
         train_dataset = PPI(path, split='train',transform=T.NormalizeFeatures())
-        val_dataset = PPI(path, split='test',transform=T.NormalizeFeatures())
+        val_dataset = PPI(path, split='val',transform=T.NormalizeFeatures())
         test_dataset = PPI(path, split='test',transform=T.NormalizeFeatures())
         args.num_features = train_dataset.num_features
         max_nodes = calculate_max_nodes_in_dataset(train_dataset + val_dataset + test_dataset,\
